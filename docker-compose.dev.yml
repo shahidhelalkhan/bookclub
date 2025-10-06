@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bookclub-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bookclub_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - bookclub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./bookclub-v1
+      dockerfile: Dockerfile
+      target: development
+    container_name: bookclub-backend-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: ${BACKEND_PORT:-3004}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_DATABASE: ${POSTGRES_DB:-bookclub_dev}
+    ports:
+      - "${BACKEND_PORT:-3004}:3004"
+    volumes:
+      - ./bookclub-v1:/app
+      - /app/node_modules
+    networks:
+      - bookclub-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run start:dev
+
+  frontend:
+    build:
+      context: ./bookclub-frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: bookclub-frontend-dev
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-3004}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./bookclub-frontend:/app
+      - /app/node_modules
+    networks:
+      - bookclub-network
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
+networks:
+  bookclub-network:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:
